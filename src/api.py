@@ -13,7 +13,7 @@ from pydantic import BaseModel
 from fpdf import FPDF
 
 from src.config import CLASSES, OUTPUT_DIR, CHECKPOINT_DIR, download_model_from_hf
-from src.preprocess import val_transforms, precheck_transforms
+from src.preprocess import val_to_numpy, precheck_to_numpy
 from src.gemini_client import generate_radiology_report
 from src.explainability import generate_attention_heatmap
 
@@ -229,9 +229,9 @@ async def analyze_brain_image(file: UploadFile = File(...), patient_nik: str = F
         image = Image.open(temp_file_path).convert("RGB")
 
         # Precheck: normalisasi [0.5, 0.5, 0.5]
-        precheck_np = precheck_transforms(image).unsqueeze(0).numpy().astype(np.float32)
+        precheck_np = precheck_to_numpy(image)
         # Hybrid: normalisasi ImageNet
-        hybrid_np = val_transforms(image).unsqueeze(0).numpy().astype(np.float32)
+        hybrid_np = val_to_numpy(image)
 
         # 4. TAHAP 1: Precheck
         is_valid = True
