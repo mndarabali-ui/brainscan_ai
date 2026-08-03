@@ -5,7 +5,7 @@ from contextlib import contextmanager
 from src.config import DATA_DIR
 
 # Local SQLite fallback. Di production, jika env Turso tersedia, aplikasi akan pakai Turso.
-DB_PATH = os.environ.get("SQLITE_DB_PATH", os.path.join(DATA_DIR, "brainscan.db"))
+DB_PATH = os.environ.get("SQLITE_DB_PATH", os.path.join(DATA_DIR, "brainscandb.db"))
 TURSO_DATABASE_URL = os.environ.get("TURSO_DATABASE_URL", "").strip()
 TURSO_AUTH_TOKEN = os.environ.get("TURSO_AUTH_TOKEN", "").strip()
 USE_TURSO = bool(TURSO_DATABASE_URL and TURSO_AUTH_TOKEN)
