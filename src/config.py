@@ -68,7 +68,7 @@ OUTPUT_DIR         = BASE_DIR / "outputs"
 CHECKPOINT_DIR     = OUTPUT_DIR / "checkpoints"
 
 # ── Hugging Face Model Repo ────────────────────────────────────────────
-HF_REPO_ID = os.environ.get("HF_REPO_ID", "delfidev/brain-hybrid-efficientnet-vit")
+HF_REPO_ID = os.environ.get("HF_REPO_ID", "marksnb/brain-hybrid-efficientnet-vit")
 
 def download_model_from_hf(filename: str):
     """
