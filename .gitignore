@@ -1,0 +1,12 @@
+venv/
+__pycache__/
+*.pyc
+.env
+
+outputs/checkpoints/*.pth
+outputs/figures/*.png
+data/*.db
+
+!outputs/checkpoints/.gitkeep
+!outputs/figures/.gitkeep
+!data/.gitkeep

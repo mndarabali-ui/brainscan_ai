@@ -1,0 +1,343 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BrainScan AI - Sistem Analisis Brain Scan Terpadu</title>
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="index.css">
+    <!-- html2pdf.js for client-side PDF generation -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+</head>
+<body>
+    <div class="app-container">
+        <!-- Header -->
+        <header class="app-header">
+            <div class="logo-area">
+                <svg class="brain-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M9.5 2A2.5 2.5 0 0 1 12 4.5v15a2.5 2.5 0 0 1-4.96-.44 2.5 2.5 0 0 1 0-4.12 2.5 2.5 0 0 1 0-4.88A2.5 2.5 0 0 1 9.5 2z"/>
+                    <path d="M14.5 2A2.5 2.5 0 0 0 12 4.5v15a2.5 2.5 0 0 0 4.96-.44 2.5 2.5 0 0 0 0-4.12 2.5 2.5 0 0 0 0-4.88A2.5 2.5 0 0 0 14.5 2z"/>
+                </svg>
+                <h1>BrainScan AI</h1>
+            </div>
+            <p class="subtitle">Integrated Brain CT-Scan & MRI Analysis Framework via Vision Transformer & Gemini AI</p>
+
+                <button class="btn-history-open" id="open-history">
+                    Riwayat Pasien
+                </button>
+            
+            </header>
+            
+        </header>
+
+        <!-- Data Pasien -->
+        <div class="patient-modal" id="patient-modal">
+            <div class="card patient-form-section" id="patient-form">
+                <h2>Data Pasien</h2>
+                <label for="patient-name">Nama Pasien</label>
+                <input type="text" id="patient-name"placeholder="Nama Pasien">
+                
+                <label for="patient-age">Umur</label>
+                <input type="number" id="patient-age"placeholder="Umur">
+
+                <label for="tanggal-lahir">Tanggal Lahir</label>
+                <input type="date" id="tanggal_lahir" name="tanggal_lahir" min="1920-01-01" max="2026-12-31">
+
+                <label for="patient-gender">Jenis Kelamin</label>
+                <select id="patient-gender">
+                    <option value="">Pilih Jenis Kelamin</option>
+                    <option value="Laki-Laki">Laki-Laki</option>
+                    <option value="Perempuan">Perempuan</option>
+                </select>
+
+                <label for="patient-nik">NIK</label>
+                <input type="text" id="patient-nik"placeholder="NIK">
+
+                <label for="patient-alamat">Alamat</label>
+                <input type="text" id="patient-alamat"placeholder="Alamat">
+
+                <label for="patient-whatsaap">Nomor Telepon</label>
+                <input type="tel" id="patient-whatsaap"placeholder="Nomor Whatsaap">
+
+                <button id="btn-start">Lanjut Ke Scan</button>
+            </div>
+        </div>
+
+        <!-- Main Dashboard -->
+        <main class="dashboard-grid" id="dashboard-grid" style="display:none;">
+            <!-- Left Side: Upload -->
+            <section class="card upload-section">
+                <div class="dropzone" id="dropzone">
+                    <input type="file" id="file-input" accept=".png,.jpg,.jpeg" style="display: none;">
+                    <div class="dropzone-content">
+                        <div class="cloud-icon-wrapper">
+                            <svg class="cloud-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M17 21a5 5 0 0 0 1-9.9 7 7 0 1 0-11.9 2.2 4 4 0 0 0-.1 7.7h11z"></path>
+                                <polyline points="16 16 12 12 8 16"></polyline>
+                                <line x1="12" y1="12" x2="12" y2="21"></line>
+                            </svg>
+                        </div>
+                        <h3>Drag & Drop to Upload Brain Scan</h3>
+                        <p>Mendukung format PNG, JPG, JPEG</p>
+                        <button class="btn btn-primary" id="btn-upload">UPLOAD & ANALISIS SEKARANG</button>
+                    </div>
+                </div>
+                <div id="file-preview-container" class="file-preview-container" style="display: none;">
+                    <span id="file-name-preview">Nama_File.png</span>
+                    <button class="btn-cancel" id="btn-cancel-file">Hapus</button>
+                </div>
+            </section>
+
+            <!-- Middle Side: Image Preview & Heatmap -->
+            <section class="card visualization-section">
+                <div class="visualization-wrapper">
+                    <div class="placeholder-visual" id="placeholder-visual">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                            <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+                            <circle cx="8.5" cy="8.5" r="1.5"></circle>
+                            <polyline points="21 15 16 10 5 21"></polyline>
+                        </svg>
+                        <p>Unggah gambar scan otak untuk melihat atensi model kecerdasan buatan (XAI) di sini.</p>
+                    </div>
+                    
+                    <div class="visual-container" id="visual-container" style="display: none;">
+                        <div class="image-box">
+                            <h4>Citra Asli</h4>
+                            <img id="img-original" src="" alt="Citra Medis Asli">
+                        </div>
+                        <div class="image-box">
+                            <h4>Peta Atensi Model (Heatmap)</h4>
+                            <img id="img-heatmap" src="" alt="Peta Fokus Atensi AI">
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Right Side: AI Metrics & Diagnosis -->
+            <section class="card metrics-section">
+                <h3>Hasil Deteksi & Analisis</h3>
+                
+                <div class="metrics-list">
+                    <div class="metric-item">
+                        <span class="label">Status:</span>
+                        <span class="value badge" id="metric-status">MENUNGGU</span>
+                    </div>
+                    <div class="metric-item">
+                        <span class="label">Diagnosis:</span>
+                        <span class="value highlight" id="metric-diagnosis">-</span>
+                    </div>
+                    <div class="metric-item">
+                        <span class="label">Confidence:</span>
+                        <span class="value" id="metric-confidence">-</span>
+                    </div>
+                </div>
+
+                <div class="charts-container">
+                    <!-- Confidence Chart -->
+                    <div class="chart-box">
+                        <span class="chart-title">Confidence</span>
+                        <div class="bar-chart-visual">
+                            <div class="bar-y-axis">
+                                <span>60%</span>
+                                <span>30%</span>
+                                <span>0</span>
+                            </div>
+                            <div class="bar-columns">
+                                <div class="bar-column">
+                                    <div class="bar-fill" id="chart-conf-val" style="height: 0%;">
+                                        <span class="bar-tooltip" id="chart-conf-tooltip">0%</span>
+                                    </div>
+                                    <span class="bar-label">Deteksi</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Accuracy Chart -->
+                    <div class="chart-box">
+                        <span class="chart-title">Accuracy Comparison</span>
+                        <div class="bar-chart-visual">
+                            <div class="bar-y-axis">
+                                <span>99%</span>
+                                <span>95%</span>
+                                <span>90%</span>
+                            </div>
+                            <div class="bar-columns compare-bars">
+                                <div class="bar-column">
+                                    <div class="bar-fill fallback-bar" style="height: 20%;">
+                                        <span class="bar-tooltip">92.1%</span>
+                                    </div>
+                                    <span class="bar-label">ViT</span>
+                                </div>
+                                <div class="bar-column">
+                                    <div class="bar-fill gemini-bar" style="height: 50%;">
+                                        <span class="bar-tooltip">94.8%</span>
+                                    </div>
+                                    <span class="bar-label">Gemini</span>
+                                </div>
+                                <div class="bar-column">
+                                    <div class="bar-fill hybrid-bar" style="height: 80%;">
+                                        <span class="bar-tooltip">96.3%</span>
+                                    </div>
+                                    <span class="bar-label">Hybrid</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+        </main>
+
+        <!-- Pipeline Steps -->
+        <section class="pipeline-section">
+            <div class="step active" id="step-precheck">
+                <div class="step-icon">1</div>
+                <div class="step-info">
+                    <h4>Pre-check</h4>
+                    <p>Penyaringan Validitas Citra</p>
+                </div>
+            </div>
+            <div class="pipeline-arrow">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <line x1="5" y1="12" x2="19" y2="12"></line>
+                    <polyline points="12 5 19 12 12 19"></polyline>
+                </svg>
+            </div>
+            <div class="step" id="step-classifier">
+                <div class="step-icon">2</div>
+                <div class="step-info">
+                    <h4>Hybrid Classifier</h4>
+                    <p>Deteksi Arsitektur CNN-Transformer</p>
+                </div>
+            </div>
+            <div class="pipeline-arrow">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <line x1="5" y1="12" x2="19" y2="12"></line>
+                    <polyline points="12 5 19 12 12 19"></polyline>
+                </svg>
+            </div>
+            <div class="step" id="step-report">
+                <div class="step-icon">3</div>
+                <div class="step-info">
+                    <h4>Report</h4>
+                    <p>Generasi Laporan Gemini AI</p>
+                </div>
+            </div>
+        </section>
+
+        <!-- Report Generation Area -->
+        <section class="card report-section" id="report-section" style="display: none;">
+            <div class="report-layout">
+                <!-- PDF Sheet Preview -->
+                <div class="report-paper-wrapper">
+                    <div class="report-paper" id="report-pdf-area">
+                        <div class="report-hospital-header">
+                            <div class="hospital-logo">
+                                <svg viewBox="0 0 24 24" fill="currentColor">
+                                    <path d="M19 10.5V20a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2v-9.5L12 4l7 6.5zM12 9v3H9v2h3v3h2v-3h3v-2h-3V9h-2z"/>
+                                </svg>
+                            </div>
+                            <div class="hospital-info">
+                                <h3>PUSAT RADIOLOGI DIGITAL & DIAGNOSTIK AI</h3>
+                                <p>Jl. Semilasari Barat No. 88, Sektor Kecerdasann buatan, Denpasar</p>
+                                <small>Email: support@brainscan.ai | Telp: (021) 555-2026</small>
+                            </div>
+                        </div>
+                        <div class="divider"></div>
+                        <div class="report-content" id="report-text-content">
+                            <!-- Teks laporan radiologi akan dimasukkan di sini -->
+                        </div>
+                    </div>
+                </div>
+
+                <!-- PDF Action Area -->
+                <div class="report-action-card">
+                    <div class="action-content">
+                        <svg class="pdf-file-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                            <polyline points="14 2 14 8 20 8"></polyline>
+                            <line x1="16" y1="13" x2="8" y2="13"></line>
+                            <line x1="16" y1="17" x2="8" y2="17"></line>
+                            <polyline points="10 9 9 9 8 9"></polyline>
+                        </svg>
+                        <h3>DOWNLOAD LAPORAN RADIOLOGI LENGKAP (PDF)</h3>
+                        <p>Dapatkan berkas laporan resmi radiologi lengkap beserta visualisasi peta atensi XAI dan tanda tangan digital untuk verifikasi klinis.</p>
+                        <button class="btn btn-pdf" id="btn-download-pdf">UNDUH DOKUMEN LAPORAN</button>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Ablation Study Table -->
+        <section class="card ablation-section">
+            <h3>Studi Ablasi System</h3>
+            <p class="section-desc">Perbandingan efisiensi performa dan akurasi model tunggal dengan arsitektur Hybrid yang kami usulkan.</p>
+            <div class="table-container">
+                <table class="ablation-table">
+                    <thead>
+                        <tr>
+                            <th>Model</th>
+                            <th>Akurasi</th>
+                            <th>Waktu Eksekusi</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td>ViT-Base</td>
+                            <td>92.1%</td>
+                            <td>1.2s</td>
+                        </tr>
+                        <tr>
+                            <td>Gemini 1.5 Flash</td>
+                            <td>94.8%</td>
+                            <td>0.8s</td>
+                        </tr>
+                        <tr class="highlight-row">
+                            <td>Hybrid Model (Sistem Kami)</td>
+                            <td>96.3%</td>
+                            <td>1.0s</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <div class="history-modal" id="history-modal">
+            <div class="card history-popup">
+                <span class="close-history" id="close-history">✖</span>
+                <h3>Riwayat Pasien</h3>
+                <p>
+                    Masukkan NIK untuk melihat riwayat pemeriksaan.
+                </p>
+                <div class="history-search">
+                    <input type="text"
+                        id="search-nik"
+                        placeholder="Masukkan NIK">
+        
+                    <button id="btn-search-history">
+                        Cari
+                    </button>
+                </div>
+                <div id="history-result"></div>
+            </div>
+        
+        </div>
+        <!-- Footer -->
+        <footer class="app-footer">
+            <p>&copy; 2026 BrainScan AI Framework. All rights reserved.</p>
+        </footer>
+    </div>
+
+    <!-- loading overlay -->
+    <div class="loading-overlay" id="loading-overlay" style="display: none;">
+        <div class="loader-content">
+            <div class="spinner"></div>
+            <h3 id="loading-title">Memproses Gambar...</h3>
+            <p id="loading-desc">Menganalisis matriks piksel citra medis.</p>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>

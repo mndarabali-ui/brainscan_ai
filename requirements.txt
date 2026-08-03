@@ -1,0 +1,16 @@
+fastapi
+uvicorn
+python-multipart
+pydantic
+torch
+torchvision
+onnxruntime
+opencv-python-headless
+numpy
+pandas
+matplotlib
+pillow
+fpdf2
+google-generativeai
+huggingface_hub
+libsql-experimental
