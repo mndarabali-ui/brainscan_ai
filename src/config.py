@@ -68,7 +68,7 @@ OUTPUT_DIR         = BASE_DIR / "outputs"
 CHECKPOINT_DIR     = OUTPUT_DIR / "checkpoints"
 
 # ── Hugging Face Model Repo ────────────────────────────────────────────
-HF_REPO_ID = os.environ.get("HF_REPO_ID", "marksnb/brain-hybrid-efficientnet-vit")
+HF_REPO_ID = os.environ.get("HF_REPO_ID", "delfidev/brain-hybrid-efficientnet-vit")
 
 def download_model_from_hf(filename: str):
     """
@@ -99,7 +99,7 @@ REPORTS_DIR        = OUTPUT_DIR / "reports"
 # ── File Paths Penting ────────────────────────────────────────────────────
 TRAINING_LOG_FILE    = LOGS_DIR        / "training.log"
 SPLITS_CSV_FILE      = SPLITS_DIR      / "train_val_test.csv"
-BEST_MODEL_PATH      = CHECKPOINT_DIR  / "hybrid_vit_efficientnet_brain_fp32.onnx"
+BEST_MODEL_PATH      = CHECKPOINT_DIR  / "hybrid_vit_efficientnet_brain_fp16.onnx"
 
 # ─── Output Figures (nama file sesuai spesifikasi) ────────────────────────
 FIG_TRAINING_PERF      = FIGURES_DIR / "training_performance.png"
