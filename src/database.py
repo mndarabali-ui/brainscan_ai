@@ -6,8 +6,9 @@ from src.config import DATA_DIR
 
 # Local SQLite fallback. Di production, jika env Turso tersedia, aplikasi akan pakai Turso.
 DB_PATH = os.environ.get("SQLITE_DB_PATH", os.path.join(DATA_DIR, "brainscandb.db"))
-TURSO_DATABASE_URL = os.environ.get("TURSO_DATABASE_URL", "").strip()
-TURSO_AUTH_TOKEN = os.environ.get("TURSO_AUTH_TOKEN", "").strip()
+TURSO_DATABASE_URL = os.environ.get("TURSO_DATABASE_URL", "libsql://brainscandb-mndarabali-ui.aws-ap-northeast-1.turso.io").strip()
+TURSO_AUTH_TOKEN = os.environ.get("TURSO_AUTH_TOKEN", "eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCJ9.eyJhIjoicnciLCJpYXQiOjE3ODU3NjA1MTksImlkIjoiMDE5ZmM3OWQtNjcwMS03OTBjLTg3YWItNzFhNGJhZTU3MThmIiwia2lkIjoiU1JJejJ4Vkk0T0l3c3hkQTJtVnBwZGZnQUFxUjdraEROUllGcy1uOER3MCIsInJpZCI6IjI4MzAwMDU0LTFkZWEtNDQ5Yi1hNTM4LTA3NThjOWNmZWQ5NCJ9.0IhvRYKIStZkIlo42Y4BjNA7Jag7YVu5n0LQDOmgD-f7Iru2mR3uj9kuJDo8e1j1F6iYXXTr2fzClQDI55LpCQ
+").strip()
 USE_TURSO = bool(TURSO_DATABASE_URL and TURSO_AUTH_TOKEN)
 
 
