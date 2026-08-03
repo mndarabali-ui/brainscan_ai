@@ -56,25 +56,25 @@ hybrid_session: ort.InferenceSession | None = None
 try:
     print("Memuat model Precheck (ONNX Runtime)...")
     precheck_onnx = (
-        download_model_from_hf("best_precheck_model.onnx")
-        or os.path.join(CHECKPOINT_DIR, "best_precheck_model.onnx")
+        download_model_from_hf("best_precheck_model_fp16.onnx")
+        or os.path.join(CHECKPOINT_DIR, "best_precheck_model_fp16.onnx")
     )
     if os.path.exists(precheck_onnx):
         precheck_session = _make_session(precheck_onnx)
         print(f"Sukses memuat Precheck ONNX dari: {precheck_onnx}")
     else:
-        print("Warning: best_precheck_model.onnx tidak ditemukan.")
+        print("Warning: best_precheck_model_fp16.onnx tidak ditemukan.")
 
     print("Memuat model Hybrid (ONNX Runtime)...")
     hybrid_onnx = (
-        download_model_from_hf("hybrid_vit_efficientnet_brain_fp32.onnx")
-        or os.path.join(CHECKPOINT_DIR, "hybrid_vit_efficientnet_brain_fp32.onnx")
+        download_model_from_hf("hybrid_vit_efficientnet_brain_fp16.onnx")
+        or os.path.join(CHECKPOINT_DIR, "hybrid_vit_efficientnet_brain_fp16.onnx")
     )
     if os.path.exists(hybrid_onnx):
         hybrid_session = _make_session(hybrid_onnx)
         print(f"Sukses memuat Hybrid ONNX dari: {hybrid_onnx}")
     else:
-        print("Warning: hybrid_vit_efficientnet_brain_fp32.onnx tidak ditemukan.")
+        print("Warning: hybrid_vit_efficientnet_brain_fp16.onnx tidak ditemukan.")
 
     print("Seluruh model AI berhasil dimuat.")
 except Exception as e:
