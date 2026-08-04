@@ -24,15 +24,6 @@ def get_db_connection():
     - Production: Turso/libSQL jika TURSO_DATABASE_URL + TURSO_AUTH_TOKEN diset.
     - Local/dev: SQLite file lokal data/brainscan.db.
     """
-    if USE_TURSO:
-        try:
-            import libsql_experimental as libsql
-        except ImportError as exc:
-            raise RuntimeError(
-                "Turso env sudah diset, tetapi package libsql-experimental belum terinstall. "
-                "Pastikan requirements.txt berisi libsql-experimental."
-            ) from exc
-
         conn = libsql.connect("brainscan-turso", sync_url=TURSO_DATABASE_URL, auth_token=TURSO_AUTH_TOKEN)
         try:
             conn.sync()
