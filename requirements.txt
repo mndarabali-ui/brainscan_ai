@@ -2,6 +2,7 @@ fastapi
 uvicorn
 python-multipart
 pydantic
+libsql_experimental
 onnxruntime
 numpy
 pillow
