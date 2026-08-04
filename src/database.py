@@ -2,6 +2,7 @@ import os
 import sqlite3
 import requests
 from src.config import DATA_DIR
+from contextlib import contextmanager
 
 DB_PATH = os.environ.get("SQLITE_DB_PATH", os.path.join(DATA_DIR, "brainscandb.db"))
 
