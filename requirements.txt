@@ -3,6 +3,7 @@ uvicorn
 python-multipart
 pydantic
 onnxruntime
+libsql-experimental
 numpy
 pillow
 fpdf2
