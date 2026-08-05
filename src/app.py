@@ -68,10 +68,6 @@ app.include_router(api_router)
 #    Urutan penting: mount("/") harus PALING TERAKHIR supaya tidak
 #    "menutupi" route API yang sudah didaftarkan lewat include_router.
 # ─────────────────────────────────────────────────────────────
-@app.get("/health")
-def health():
-    return {"status": "ok"}
-  
 app.mount(
     "/outputs/figures",
     StaticFiles(directory=os.path.join(OUTPUT_DIR, "figures")),
