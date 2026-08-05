@@ -1,3 +1,4 @@
+
 import os
 import io
 import base64
@@ -12,10 +13,11 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from fpdf import FPDF
 
-from src.config import CLASSES, OUTPUT_DIR, CHECKPOINT_DIR, download_model_from_hf
-from src.preprocess import val_to_numpy, precheck_to_numpy
+from src.config import CLASSES, OUTPUT_DIR, download_model_from_hf
+from src.preprocess import val_transforms, precheck_transforms
 from src.gemini_client import generate_radiology_report
 from src.explainability import generate_attention_heatmap
+from src.database import upsert_patient, get_patient, add_scan_record, get_patient_history
 
 router = APIRouter()
 
@@ -28,100 +30,69 @@ _BULAN_ID = ["", "Januari", "Februari", "Maret", "April", "Mei", "Juni",
 
 
 def tanggal_indonesia_sekarang() -> str:
-    """Format tanggal sekarang, misal: 'Selasa, 7 Juli 2026' — bukan tanggal tetap."""
     now = datetime.datetime.now()
     return f"{_HARI_ID[now.weekday()]}, {now.day} {_BULAN_ID[now.month]} {now.year}"
 
 
-# ─────────────────────────────────────────────────────────────
-# Helper: buat ONNX Runtime InferenceSession
-# ─────────────────────────────────────────────────────────────
-def _make_session(onnx_path: str) -> ort.InferenceSession:
-    """Buat ORT session dengan CPU EP."""
-    sess_options = ort.SessionOptions()
-    sess_options.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
-    return ort.InferenceSession(
-        onnx_path,
-        sess_options=sess_options,
-        providers=["CUDAExecutionProvider", "CPUExecutionProvider"],
-    )
+def softmax(x: np.ndarray) -> np.ndarray:
+    """Softmax numpy biasa, menggantikan torch.nn.functional.softmax."""
+    e_x = np.exp(x - np.max(x, axis=-1, keepdims=True))
+    return e_x / np.sum(e_x, axis=-1, keepdims=True)
 
 
 # ─────────────────────────────────────────────────────────────
-# Muat ONNX model via ONNX Runtime saat modul ini diimpor
+# Muat model-model AI (ONNX Runtime session) secara global, SEKALI,
+# saat modul ini diimpor (yaitu saat app.py memanggil `from src.api import router`)
+#
+# PENTING: pakai FP32 untuk KEDUA model (bukan FP16/INT8) --
+# FP16 hybrid terbukti gagal di-load (mixed dtype bug di graph ONNX-nya),
+# dan INT8 (baik precheck maupun hybrid) terbukti akurasinya jatuh drastis
+# saat divalidasi. FP32 adalah satu-satunya versi yang sudah terverifikasi
+# 100% cocok dengan model PyTorch aslinya.
 # ─────────────────────────────────────────────────────────────
-precheck_session: ort.InferenceSession | None = None
-hybrid_session: ort.InferenceSession | None = None
+# ─────────────────────────────────────────────────────────────
+# Opsi sesi ONNX Runtime yang menekan pemakaian RAM -- penting untuk
+# hosting dengan RAM terbatas (mis. 512MB free tier). Trade-off:
+# eksekusi sedikit lebih lambat, tapi puncak pemakaian RAM turun jauh.
+# ─────────────────────────────────────────────────────────────
+def _low_memory_session_options():
+    opts = ort.SessionOptions()
+    opts.enable_mem_pattern = False       # matikan pre-alokasi buffer besar
+    opts.enable_cpu_mem_arena = False     # matikan arena allocator (lebih hemat, tapi lebih lambat)
+    opts.intra_op_num_threads = 1         # 1 thread -- kurangi overhead memori per-thread
+    opts.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_BASIC
+    return opts
+
+
+precheck_session = None
+hybrid_session = None
 
 try:
-    print("Memuat model Precheck (ONNX Runtime)...")
-    precheck_onnx = (
-        download_model_from_hf("best_precheck_model_fp16.onnx")
-        or os.path.join(CHECKPOINT_DIR, "best_precheck_model_fp16.onnx")
-    )
-    if os.path.exists(precheck_onnx):
-        precheck_session = _make_session(precheck_onnx)
-        print(f"Sukses memuat Precheck ONNX dari: {precheck_onnx}")
+    print("⏳ Memuat model Precheck (ONNX)...")
+    precheck_path = download_model_from_hf("best_precheck_model.onnx")
+    if precheck_path:
+        precheck_session = ort.InferenceSession(
+            precheck_path, sess_options=_low_memory_session_options(),
+            providers=["CPUExecutionProvider"],
+        )
+        print(f"💾 Sukses memuat model Precheck dari {precheck_path}")
     else:
-        print("Warning: best_precheck_model_fp16.onnx tidak ditemukan.")
+        print("⚠️ Warning: best_precheck_model.onnx tidak ditemukan di HF repo. Precheck akan dilewati (semua gambar dianggap valid).")
 
-    print("Memuat model Hybrid (ONNX Runtime)...")
-    hybrid_onnx = (
-        download_model_from_hf("hybrid_vit_efficientnet_brain_fp16.onnx")
-        or os.path.join(CHECKPOINT_DIR, "hybrid_vit_efficientnet_brain_fp16.onnx")
-    )
-    if os.path.exists(hybrid_onnx):
-        hybrid_session = _make_session(hybrid_onnx)
-        print(f"Sukses memuat Hybrid ONNX dari: {hybrid_onnx}")
+    print("⏳ Memuat model Utama Hybrid (ONNX)...")
+    hybrid_path = download_model_from_hf("hybrid_vit_efficientnet_brain_fp32.onnx")
+    if hybrid_path:
+        hybrid_session = ort.InferenceSession(
+            hybrid_path, sess_options=_low_memory_session_options(),
+            providers=["CPUExecutionProvider"],
+        )
+        print(f"💾 Sukses memuat model Classifier utama dari {hybrid_path}")
     else:
-        print("Warning: hybrid_vit_efficientnet_brain_fp16.onnx tidak ditemukan.")
+        print("⚠️ Warning: hybrid_vit_efficientnet_brain_fp32.onnx tidak ditemukan di HF repo.")
 
-    print("Seluruh model AI berhasil dimuat.")
+    print("✨ Proses pemuatan model AI selesai.")
 except Exception as e:
-    print(f"Gagal memuat model AI: {str(e)}")
-
-
-# ─────────────────────────────────────────────────────────────
-# Helper: jalankan inference ONNX Runtime
-# ─────────────────────────────────────────────────────────────
-def _run_precheck(tensor_image_np: np.ndarray) -> tuple[int, float]:
-    """
-    Jalankan inference model Precheck.
-    Return: (is_valid_idx, probability_score)
-      is_valid_idx == 1  => gambar Valid (brain scan)
-      is_valid_idx == 0  => gambar Invalid
-    """
-    outputs = precheck_session.run(
-        None,
-        {"input": tensor_image_np},
-    )
-    logits = outputs[0]  # shape [1, 2]
-    # Softmax manual supaya tidak perlu torch
-    exp_l = np.exp(logits - logits.max(axis=1, keepdims=True))
-    probs = exp_l / exp_l.sum(axis=1, keepdims=True)
-    pred_idx = int(np.argmax(probs[0]))
-    prob_score = float(probs[0][pred_idx])
-    return pred_idx, prob_score
-
-
-def _run_hybrid(tensor_image_np: np.ndarray) -> tuple[int, float, np.ndarray]:
-    """
-    Jalankan inference model Hybrid.
-    Return: (predicted_class_idx, confidence_score, attention_map_array)
-    """
-    outputs = hybrid_session.run(
-        None,
-        {"input": tensor_image_np},
-    )
-    logits = outputs[0]       # shape [1, 5]
-    attention = outputs[1]    # shape [1, num_heads, seq_len, seq_len]
-
-    # Softmax manual
-    exp_l = np.exp(logits - logits.max(axis=1, keepdims=True))
-    probs = exp_l / exp_l.sum(axis=1, keepdims=True)
-    pred_idx = int(np.argmax(probs[0]))
-    confidence = float(probs[0][pred_idx]) * 100
-    return pred_idx, confidence, attention
+    print(f"❌ Gagal memuat model AI: {str(e)}")
 
 
 # ─────────────────────────────────────────────────────────────
@@ -158,15 +129,13 @@ def get_status():
         "status": "Online",
         "precheck_model_loaded": precheck_session is not None,
         "classifier_model_loaded": hybrid_session is not None,
-        "device": "onnxruntime",
+        "runtime": "onnxruntime (CPU)",
     }
 
 
 # ─────────────────────────────────────────────────────────────
 # Endpoint: data pasien
 # ─────────────────────────────────────────────────────────────
-from src.database import upsert_patient, get_patient, add_scan_record, get_patient_history
-
 @router.post("/api/patients/")
 def register_patient(patient: PatientCreate):
     """Menyimpan atau memperbarui data profil pasien"""
@@ -214,30 +183,28 @@ async def analyze_brain_image(file: UploadFile = File(...), patient_nik: str = F
     menjalankan klasifikasi penyakit, memvisualisasikan atensi model (XAI),
     dan menghasilkan laporan radiologi AI.
     """
-    # 1. Validasi Ekstensi File
     if not file.filename.lower().endswith(('.png', '.jpg', '.jpeg')):
         raise HTTPException(status_code=400, detail="Format file harus berupa gambar (PNG, JPG, JPEG).")
 
     try:
-        # 2. Simpan file unggahan sementara untuk visualisasi heatmap
-        os.makedirs("temp_uploads", exist_ok=True)
         temp_file_path = os.path.join("temp_uploads", file.filename)
+        os.makedirs("temp_uploads", exist_ok=True)
         with open(temp_file_path, "wb") as buffer:
             shutil.copyfileobj(file.file, buffer)
 
-        # 3. Baca gambar dan konversi ke numpy array float32
         image = Image.open(temp_file_path).convert("RGB")
 
-        # Precheck: normalisasi [0.5, 0.5, 0.5]
-        precheck_np = precheck_to_numpy(image)
-        # Hybrid: normalisasi ImageNet
-        hybrid_np = val_to_numpy(image)
-
-        # 4. TAHAP 1: Precheck
+        # 1. TAHAP 1: Precheck (Menyaring Gambar Valid Brain Scan vs Gambar Noise/Invalid)
         is_valid = True
         precheck_prob_val = 0.99
         if precheck_session is not None:
-            is_valid_idx, precheck_prob_val = _run_precheck(precheck_np)
+            precheck_input = precheck_transforms(image)
+            input_name = precheck_session.get_inputs()[0].name
+            precheck_logits = precheck_session.run(None, {input_name: precheck_input})[0]
+            precheck_prob = softmax(precheck_logits)[0]
+            is_valid_idx = int(np.argmax(precheck_prob))
+            precheck_prob_val = float(precheck_prob[is_valid_idx])
+            # Indeks 1: Valid, Indeks 0: Invalid (Sesuai dengan dataset latihan precheck)
             is_valid = (is_valid_idx == 1)
 
         if not is_valid:
@@ -250,37 +217,40 @@ async def analyze_brain_image(file: UploadFile = File(...), patient_nik: str = F
                 "precheck_confidence": f"{precheck_prob_val * 100:.2f}%",
             }
 
-        # 5. TAHAP 2: Klasifikasi Utama
+        # 2. TAHAP 2: Klasifikasi Utama (5 Kelas Penyakit Otak)
         if hybrid_session is None:
             raise HTTPException(status_code=500, detail="Model utama klasifikasi tidak termuat di server.")
 
-        predicted_idx, confidence_score, attention = _run_hybrid(hybrid_np)
+        hybrid_input = val_transforms(image)
+        input_name = hybrid_session.get_inputs()[0].name
+        # Model hybrid punya 2 output: [logits, attention] (lihat reexport_onnx_with_attention.py)
+        hybrid_logits = hybrid_session.run(None, {input_name: hybrid_input})[0]
+        hybrid_prob = softmax(hybrid_logits)[0]
+
+        predicted_idx = int(np.argmax(hybrid_prob))
+        confidence_score = float(hybrid_prob[predicted_idx]) * 100
         predicted_class = CLASSES[predicted_idx]
 
-        # 6. TAHAP 3: Eksplanabilitas AI (XAI) — Peta Atensi Heatmap (pakai attention dari ONNX)
+        # 3. TAHAP 3: Eksplanabilitas AI (XAI) - Hasilkan Peta Atensi Heatmap
         heatmap_filename = f"heatmap_{os.path.splitext(file.filename)[0]}.png"
-        generate_attention_heatmap(
-            image_path=temp_file_path,
-            save_name=heatmap_filename,
-            attention_override=attention,
-        )
+        generate_attention_heatmap(temp_file_path, save_name=heatmap_filename, onnx_session=hybrid_session)
 
-        # 7. TAHAP 4: Laporan radiologi AI
+        # 4. TAHAP 4: Kirim Hasil Ke Gemini / Laporan Lokal
         modality = "CT" if "ct" in file.filename.lower() else "MRI"
         report_text = generate_radiology_report(predicted_idx, confidence_score, modality)
 
-        # 8. Encode heatmap dan gambar asli ke base64
+        # 5. Encode gambar visualisasi heatmap dan gambar asli menjadi base64
         heatmap_path = os.path.join(OUTPUT_DIR, "figures", heatmap_filename)
+
         with open(heatmap_path, "rb") as img_file:
-            heatmap_base64 = base64.b64encode(img_file.read()).decode("utf-8")
+            heatmap_base64 = base64.b64encode(img_file.read()).decode('utf-8')
 
         with open(temp_file_path, "rb") as img_file:
-            original_base64 = base64.b64encode(img_file.read()).decode("utf-8")
+            original_base64 = base64.b64encode(img_file.read()).decode('utf-8')
 
         if os.path.exists(temp_file_path):
             os.remove(temp_file_path)
 
-        # 9. Simpan ke database (opsional)
         if patient_nik:
             try:
                 add_scan_record(
@@ -294,9 +264,8 @@ async def analyze_brain_image(file: UploadFile = File(...), patient_nik: str = F
                     heatmap_b64=f"data:image/png;base64,{heatmap_base64}",
                 )
             except Exception as db_err:
-                print(f"Gagal menyimpan riwayat scan ke database: {str(db_err)}")
+                print(f"⚠️ Gagal menyimpan riwayat scan ke database: {str(db_err)}")
 
-        # 10. Kembalikan respons JSON
         return {
             "status": "Valid",
             "filename": file.filename,
@@ -306,14 +275,13 @@ async def analyze_brain_image(file: UploadFile = File(...), patient_nik: str = F
                 "class_index": predicted_idx,
                 "confidence": f"{confidence_score:.2f}%",
             },
-            "precheck_confidence": f"{precheck_prob_val * 100:.2f}%",
             "radiology_report": report_text,
             "original_image_b64": f"data:image/png;base64,{original_base64}",
             "heatmap_image_b64": f"data:image/png;base64,{heatmap_base64}",
         }
 
     except Exception as e:
-        if "temp_file_path" in locals() and os.path.exists(temp_file_path):
+        if 'temp_file_path' in locals() and os.path.exists(temp_file_path):
             os.remove(temp_file_path)
         raise HTTPException(status_code=500, detail=f"Terjadi kesalahan internal analisis: {str(e)}")
 
@@ -328,7 +296,6 @@ def download_pdf(data: PDFDownloadRequest):
         pdf.add_page()
         pdf.set_font("helvetica", size=10)
 
-        # 1. Header (Kop Surat)
         pdf.set_font("helvetica", "B", 14)
         pdf.cell(0, 8, "PUSAT RADIOLOGI DIGITAL & DIAGNOSTIK AI", new_x="LMARGIN", new_y="NEXT", align="C")
         pdf.set_font("helvetica", size=9)
@@ -339,12 +306,10 @@ def download_pdf(data: PDFDownloadRequest):
         pdf.line(10, pdf.get_y(), 200, pdf.get_y())
         pdf.ln(5)
 
-        # 2. Document Title
         pdf.set_font("helvetica", "B", 12)
         pdf.cell(0, 7, "DOKUMEN LAPORAN HASIL PEMERIKSAAN RADIOLOGI (OPINI AI)", new_x="LMARGIN", new_y="NEXT", align="C")
         pdf.ln(4)
 
-        # 3. Patient Details
         pdf.set_font("helvetica", "B", 10)
         pdf.cell(0, 6, "I. IDENTITAS PASIEN & PEMERIKSAAN", new_x="LMARGIN", new_y="NEXT")
         pdf.set_font("helvetica", size=9)
@@ -373,7 +338,6 @@ def download_pdf(data: PDFDownloadRequest):
         pdf.line(10, pdf.get_y(), 200, pdf.get_y())
         pdf.ln(5)
 
-        # 4. Report Text Content
         pdf.set_font("helvetica", "B", 10)
         pdf.cell(0, 6, "II. LAPORAN PEMERIKSAAN (RADIOLOGY REPORT)", new_x="LMARGIN", new_y="NEXT")
         pdf.ln(2)
@@ -398,7 +362,6 @@ def download_pdf(data: PDFDownloadRequest):
             else:
                 pdf.multi_cell(0, 5, line, new_x="LMARGIN", new_y="NEXT")
 
-        # 5. Signatures
         pdf.ln(15)
         current_y = pdf.get_y()
 
